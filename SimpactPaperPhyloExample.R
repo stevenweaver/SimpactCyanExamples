@@ -4,7 +4,7 @@
 
 # setwd("/path/to/your/working_directory/") # Change this to your own working directory
 
-setwd("/home/david/Desktop/SimpactCyanExamples")
+setwd("/home/sweaver/programming/hivtrace/SimpactCyanExamples")
 
 # Make sure compiled tools (Seq-Gen and FastTree) are in same working directory
 
@@ -20,11 +20,12 @@ library(lubridate)
 library(ggtree)
 library(ggplot2)
 library(tidyr)
+library(tidyverse)
 
+#debug(sequence.simulation.seqgen.par)
 
 inputvector <- c(123, -0.52, -0.05, 5, 7, 3, 0.25, -0.3, -0.1, 
                  -1, -90, 0.5, 0.05, -0.14, 5, 7, 12, -2.7) 
-
 
 
 #######################
@@ -336,15 +337,13 @@ plot.prev.men.women <- ggplot(prev_data, aes(x=age, y=prev, colour=gender, group
 simpact.trans.net <- transmission.network.builder(datalist = datalist, endpoint = 40)
 
 
+################################
+## Step 3: Sequence simulation #
+################################
 
-
-###############################
-# Step 3: Sequence simulation #
-###############################
-
-dirseqgen <- "/home/david/Desktop/SimpactCyanExamples"
-dirfasttree <- "/home/david/Desktop/SimpactCyanExamples" 
-sub.dir.rename <- "/home/david/Desktop/SimpactCyanExamples"
+dirseqgen <- "/home/sweaver/programming/hivtrace/SimpactCyanExamples"
+dirfasttree <- "/home/sweaver/programming/hivtrace/SimpactCyanExamples" 
+sub.dir.rename <- "/home/sweaver/programming/hivtrace/SimpactCyanExamples"
 
 sequence.simulation.seqgen.par(dir.seq = dirseqgen,
                                sub.dir.rename = sub.dir.rename,
@@ -396,7 +395,7 @@ latest.samp <- N$timeToMRCA+N$timeOfMRCA # latest sampling date
 
 # Molecular clock parameters
 
-pbtd <- treedater::parboot.treedater(tree.calib)
+pbtd <- treedater::parboot(tree.calib)
 
 # $pbtd
 #                           pseudo ML        2.5 %       97.5 %
@@ -491,7 +490,7 @@ SimpactPaperPhyloExample$numC.tra <- numC.tra
 SimpactPaperPhyloExample$pbtd <- pbtd
 save(SimpactPaperPhyloExample, file = "SimpactPaperPhyloExample.RData")
 
-load(file = "/path/to/your/working_directory/SimpactPaperPhyloExample.RData")
+load(file = "/home/sweaver/programming/hivtrace/SimpactCyanExamples/SimpactPaperPhyloExample.RData")
 # A. Transmission network
 
 network <- SimpactPaperPhyloExample$transNet.yrs.Ord
@@ -522,7 +521,7 @@ print(transmissionnetwork.plot)
 
 ggsave(filename = "network_vsc.pdf",
        plot = transmissionnetwork.plot,
-       path = "/path/to/your/working_directory/plots",
+       path = "/home/sweaver/programming/hivtrace/SimpactCyanExamples/plots",
        width = 20, height = 30, units = "cm")
 
 
@@ -555,7 +554,7 @@ print(phylotree.plot)
 
 ggsave(filename = "tree_vsc.pdf",
        plot = phylotree.plot,
-       path = "/path/to/your/working_directory/plots",
+       path = "/home/sweaver/programming/hivtrace/SimpactCyanExamples/plots",
        width = 10, height = 15, units = "cm")
 
 
@@ -601,7 +600,7 @@ print(transandnodes.plot)
 
 ggsave(filename = "events_vsc.pdf",
        plot = transandnodes.plot,
-       path = "/path/to/your/working_directory/plots",
+       path = "/home/sweaver/programming/hivtrace/SimpactCyanExamples/plots",
        width = 10, height = 15, units = "cm")
 
 
@@ -612,8 +611,65 @@ ggsave(filename = "events_vsc.pdf",
 
 pbtd <- SimpactPaperPhyloExample$pbtd
 
+# datalist$etable %>% filter(p1ID == 1526) %>% filter(eventname == "transmission")
 
-treedater::plot.parboot.ltt(pbtd) # export figure
+# simpact.trans.net[[11]]$parent - maps to index on RecId
+# simpact.trans.net[[11]]$RecId
+
+# For each RecId, map the index to the original ID
+# 11.1.C -> 3115
+idmap = list()
+iddict = list()
+cnt<-1
+
+for(i in 1:length(simpact.trans.net)) {
+	for(j in 1:length(simpact.trans.net[[i]]$RecId)) {
+		idmap[cnt] = paste(paste(i,".", j, ".C", sep = ""), simpact.trans.net[[i]]$RecId[[j]], sep=",")
+		cnt <- cnt+1
+	}
+}
+
+for(i in 1:length(simpact.trans.net)) {
+	for(j in 1:length(simpact.trans.net[[i]]$RecId)) {
+		iddict[simpact.trans.net[[i]]$RecId[[j]]] = paste(i,".", j, ".C", sep = "")
+	}
+}
+
+
+# Create an edge list of transmissions
+# 1526, 3115
+edge_list <- list()
+idmap_edge_list <- list()
+cnt <- 1
+
+for(i in 1:length(simpact.trans.net)) {
+	for(j in 1:length(simpact.trans.net[[i]]$RecId)) {
+
+		parent_index <- simpact.trans.net[[i]]$parent[j]
+		parent_id <- parent_index
+		parent_mapped <- parent_id
+
+		if(parent_index > -1) {
+			parent_id <- simpact.trans.net[[i]]$RecId[[parent_index+1]]
+			parent_mapped <- iddict[parent_id]
+		}
+
+		edge_list[cnt] = paste(parent_id, simpact.trans.net[[i]]$RecId[[j]], sep=",")
+
+		mapped <- iddict[simpact.trans.net[[i]]$RecId[[j]]]
+
+		idmap_edge_list[cnt] = paste(parent_mapped, mapped)
+		cnt <- cnt+1
+
+	}
+}
+
+
+lapply(idmap, write, "idmap.csv", append=TRUE)
+lapply(edge_list, write, "edge_list.csv", append=TRUE)
+lapply(idmap_edge_list, write, "idmap_edge_list.csv", append=TRUE)
+
+#treedater::plot.parboot.ltt(pbtd) # export figure
 
 
 
